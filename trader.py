@@ -104,15 +104,15 @@ class Trader:
         {self.build_key_value('Total Shorts', self.total_shorts, True)}\
         {self.build_key_value('Total Trades', self.total_trades)}\
         {self.build_key_value('Margin Percentage', f'{self.margin_pct}%')}\
-        {self.build_key_value('Leverage', f'{self.leverage}x')}\
+        {self.build_key_value('Leverage', f'{round(self.leverage, 2)}x')}\
         {self.build_key_value('First Trade Time', self.first_trade_time if self.first_trade_time is None else self.first_trade_time.strftime('%b, %d %Y at %I:%M:%S %p'))}\
         {self.build_key_value('Last Trade Time', self.last_trade_time if self.last_trade_time is None else self.first_trade_time.strftime('%b, %d %Y at %I:%M:%S %p'))}\
-        {self.build_key_value('Last Trade Type', f'{self.last_trade_type}')}\
-        {self.build_key_value('Last Trade Price', f'{self.last_trade_price}')}\
-        {self.build_key_value('Last Trade Volume', f'{self.last_trade_volume}')}\
-        {self.build_key_value('Last Trade Cost', f'{self.last_trade_cost}')}\
-        {self.build_key_value('Last Trade Current TP', f'{self.last_trade_tp}')}\
-        {self.build_key_value('Last Trade Current SL', f'{self.last_trade_sl}')}\
+        {self.build_key_value('Last Trade Type', self.last_trade_type)}\
+        {self.build_key_value('Last Trade Price', round(self.last_trade_price, 2))}\
+        {self.build_key_value('Last Trade Volume', round(self.last_trade_volume, 2))}\
+        {self.build_key_value('Last Trade Cost', round(self.last_trade_cost, 2))}\
+        {self.build_key_value('Last Trade Current TP', round(self.last_trade_tp, 2))}\
+        {self.build_key_value('Last Trade Current SL', round(self.last_trade_sl, 2))}\
         {self.build_key_value('16hrs Average Trend Strength Percentage', f'{round(self.avg_trend_strength, 2)}%')}\n\
         {self.build_key_value('', '===== <b>Logs For The Developer</b> =====<b>:</b>', False, caller_id)}\n\
         {self.build_key_value('close', round(self.close, 2), False, caller_id)}\
@@ -331,7 +331,7 @@ class Trader:
             and new_pos is not None and new_pos.volume > 0 \
             and (new_pos.order_type == 'buy' or self.is_futures):
             logger.info(f"Position::R', {new_pos.asdict()}")
-            self.status = Trader.TraderStatus.trading
+            self.status = TraderStatus.trading
             new_pos.is_closed = False
             self.add_position(new_pos)
             self.set_last_trade_info(new_pos)
