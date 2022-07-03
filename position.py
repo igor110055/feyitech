@@ -1,3 +1,4 @@
+from traderstatus import TraderStatus
 
 class Position:
     def __init__(self, parent, open_price, open_time, volume, leverage, tp, sl, order_type, strategy_type):
@@ -12,6 +13,7 @@ class Position:
         self.strategy_type = strategy_type
         self.close_price = 0
         self.close_time = 0
+        self.profit = 0
         self.is_closed = True
 
     def close_position(self, close_time, close_price):
@@ -28,6 +30,7 @@ class Position:
         self.parent.profits = self.parent.profits + self.profit
         # update the trader's pnl
         self.parent.pnl = self.parent.balance + self.parent.profits
+        self.parent.status = TraderStatus.waiting
 
     def asdict(self):
         return {

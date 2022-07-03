@@ -16,7 +16,7 @@ from typing import Optional
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup, ParseMode, Update
 from telegram.ext import CallbackContext, CallbackQueryHandler, CommandHandler, ConversationHandler, Defaults, Updater
 from conversations.addtrade import AddTradeConversation
-from conversations.removetrade import RemoveTradeConversation
+from conversations.stoptrade import StopTradeConversation
 from conversations.updatetrade import UpdateTradeConversation
 
 from trader import Trader
@@ -49,14 +49,14 @@ class TradeBot:
         self.convos = {
             'addtrade': AddTradeConversation(parent=self, config=self.config),
             'updatetrade': UpdateTradeConversation(parent=self, config=self.config),
-            'removetrade': RemoveTradeConversation(parent=self, config=self.config)
+            'stoptrade': StopTradeConversation(parent=self, config=self.config)
         }
         self.setup_telegram()
         #self.start_status_update()
         self.last_status_message_id: Optional[int] = None
         self.prompts_select_token = {
             'updatetrade': 'Which trade do you want to update its settings?',
-            'removetrade': 'Which trade do you want to cancel?'
+            'stoptrade': 'Which trade do you want to stop?'
         }
 
     def init(self):
@@ -109,21 +109,30 @@ class TradeBot:
         self.dispatcher.add_handler(CommandHandler('start', self.command_start))
         self.dispatcher.add_handler(CommandHandler('status', self.command_status))
         self.dispatcher.add_handler(CommandHandler('updatetrade', self.command_show_all_trades))
-        self.dispatcher.add_handler(CommandHandler('removetrade', self.command_show_all_trades))
+        self.dispatcher.add_handler(CommandHandler('stoptrade', self.command_show_all_trades))
+        self.dispatcher.add_handler(CommandHandler('about', self.command_about))
+        self.dispatcher.add_handler(CommandHandler('dev', self.command_dev))
         self.dispatcher.add_handler(
             CallbackQueryHandler(
-                self.command_show_all_trades, pattern='^updatetrade$|^removetrade$'
+                self.command_show_all_trades, pattern='^updatetrade$|^stoptrade$'
             )
         )
-        self.dispatcher.add_handler(CallbackQueryHandler(self.cancel_command, pattern='^removetradechoice$'))
+        self.dispatcher.add_handler(
+            CallbackQueryHandler(
+                self.command_restart_trade, pattern='^restart_trade:[^:]*$'
+            )
+        )
+        self.dispatcher.add_handler(CallbackQueryHandler(self.cancel_command, pattern='^stoptradechoice$'))
         for convo in self.convos.values():
             self.dispatcher.add_handler(convo.handler)
         commands = [
             ('status', 'Display all trades and their PNL'),
             ('addtrade', 'Buy/Long or sell/Short an asset'),
             ('updatetrade', 'Update the settings of a trade'),
-            ('removetrade', 'Remove/Stop a trade'),
+            ('stoptrade', 'Pause/Remove a trade'),
             ('cancel', 'Cancel the current operation'),
+            ('about', 'About the bot and its workings'),
+            ('dev', 'About the developer and contact'),
         ]
         self.dispatcher.bot.set_my_commands(commands=commands)
         self.dispatcher.add_error_handler(self.error_handler)
@@ -168,7 +177,7 @@ class TradeBot:
                     reply_markup = InlineKeyboardMarkup([
                         [
                             InlineKeyboardButton('✏️ Edit Trade', callback_data=f'updatetrade:{trade_path}'),
-                            InlineKeyboardButton('❌ Remove Trade', callback_data=f'removetrade:{trade_path}')
+                            InlineKeyboardButton('🛑 Stop Trade' if trader.alive else '▶ Restart Trade', callback_data=f'{"stoptrade" if trader.alive else "restart_trade"}:{trade_path}')
                         ]
                     ])
                     chat_message(
@@ -187,7 +196,7 @@ class TradeBot:
                     reply_markup = InlineKeyboardMarkup([
                         [
                             InlineKeyboardButton('✏️ Edit Trade', callback_data=f'updatetrade:{trade_path}'),
-                            InlineKeyboardButton('❌ Remove Trade', callback_data=f'removetrade:{trade_path}')
+                            InlineKeyboardButton('🛑 Stop Trade' if trader.alive else '▶ Restart Trade', callback_data=f'{"stoptrade" if trader.alive else "restart_trade"}:{trade_path}')
                         ]
                     ])
                     chat_message(
@@ -201,10 +210,48 @@ class TradeBot:
                     time.sleep(0.2)
 
     @check_chat_id
+    def command_restart_trade(self, update: Update, context: CallbackContext):
+        assert update.callback_query
+        query = update.callback_query
+        assert query.data
+        query.delete_message()
+        trade_keys = query.data.split(':')[1].split(Constants.trade_keys_separator)
+        trade_type = trade_keys[0]
+        trade_symbol = trade_keys[1]
+        if not self.trade_exists(symbol=trade_symbol, trade_type=trade_type, update=update):
+            chat_message(update, context, text='⛔️ Invalid trade.', edit=False)
+            return ConversationHandler.END
+        
+        trader = self.get_trade(symbol=trade_symbol, trade_type=trade_type, update=update)
+        trader.trade()
+        self.send_feedback(update, context, trader.feedback)
+
+    @check_chat_id
+    def command_about(self, update: Update, context: CallbackContext):
+        chat_message(
+            update=update,
+            context=context,
+            photo_up=Constants.logo_filename,
+            text=MSG.about,
+            edit=False,
+        )
+
+
+    @check_chat_id
+    def command_dev(self, update: Update, context: CallbackContext):
+        chat_message(
+            update=update,
+            context=context,
+            photo_up=Constants.dev_logo_filename,
+            text=MSG.dev,
+            edit=False,
+        )
+
+    @check_chat_id
     def command_show_all_trades(self, update: Update, context: CallbackContext):
-        if update.message: # process text command such as /removetrade, /updatetrade... from user
+        if update.message: # process text command such as /stoptrade, /updatetrade... from user
             assert update.message.text
-            command = update.message.text.strip()[1:] # e.g turns /removetrade to removetrade
+            command = update.message.text.strip()[1:] # e.g turns /stoptrade to stoptrade
             try:
                 # get the message to display before the trades buttons
                 msg = self.prompts_select_token[command]
@@ -276,8 +323,8 @@ class TradeBot:
         if trader is not None:
             self.trades[self.get_user_key(update)][Constants.TradeType.futures if is_futures else Constants.TradeType.spot][symbol.upper()] = trader
         logger.info(self.trades)
-        self.send_feedback(update, context, trader.feedback)
         trader.trade()
+        self.send_feedback(update, context, trader.feedback)
 
     def updatetrade(self, symbol: str, is_futures: bool, margin_pct: float, leverage: int, update: Update, context: CallbackContext):
         trade_type = Constants.TradeType.futures if is_futures else Constants.TradeType.spot
@@ -287,10 +334,11 @@ class TradeBot:
         )
         self.send_feedback(update, context, trader.feedback)
 
-    def removetrade(self, symbol: str, trade_type: str, update: Update, context: CallbackContext):
+    def stoptrade(self, symbol: str, trade_type: str, delete: bool, update: Update, context: CallbackContext):
         trader = self.get_trade(symbol=symbol, trade_type=trade_type, update=update)
         trader.stop()
-        del self.trades[self.get_user_key(update)][trade_type][symbol]
+        if delete:
+            del self.trades[self.get_user_key(update)][trade_type][symbol]
         logger.info(self.trades)
         self.send_feedback(update, context, trader.feedback)
 

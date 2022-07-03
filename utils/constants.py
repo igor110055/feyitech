@@ -4,6 +4,8 @@ class Constants:
     settings_db_name = 'settings'
     trade_keys_separator = '|'
     chart_photos_dir_name = 'chart_photos'
+    logo_filename = 'assets/logo.png'
+    dev_logo_filename = 'assets/dev-logo.png'
     class TradeType:
         futures = 'futures'
         spot = 'spot'
@@ -13,5 +15,4 @@ class Constants:
         status = 'status'
         addtrade = 'addtrade'
         updatetrade = 'updatetrade'
-        removetrade = 'removetrade'
-        cancelalltrades = 'cancelalltrades'
+        removetrade = 'stoptrade'
